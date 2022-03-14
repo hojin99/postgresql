@@ -1,0 +1,12 @@
+version: '2'
+services:
+  db:
+    image: pg13:latest 
+    container_name: pg13 
+    ports:
+      - '10031:5432' 
+    volumes:
+      - pg13_data:/var/lib/postgresql/data
+    # restart: always
+volumes:
+  pg13_data:

@@ -1,0 +1,12 @@
+version: '2'
+services:
+  db:
+    image: pg10:latest 
+    container_name: pg10 
+    ports:
+      - '10030:5432' 
+    volumes:
+      - pg10_data:/var/lib/postgresql/data
+    # restart: always
+volumes:
+  pg10_data:
