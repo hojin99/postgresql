@@ -14,7 +14,7 @@ ENV POSTGRES_PASSWORD=1234
 
 # EXTENSION 추가 작업
 RUN mkdir -p /docker-entrypoint-initdb.d
-COPY ./initdb-extension.sh /docker-entrypoint-initdb.d/extension.sh
+COPY ./initdb-extension.sh /docker-entrypoint-initdb.d/00_extension.sh
 
 # 초기화 sh, sql 실행
 COPY ./init_dump*.sql /docker-entrypoint-initdb.d/
