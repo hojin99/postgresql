@@ -17,4 +17,4 @@ RUN mkdir -p /docker-entrypoint-initdb.d
 COPY ./initdb-extension.sh /docker-entrypoint-initdb.d/00_extension.sh
 
 # 초기화 sh, sql 실행
-COPY ./*.sql /docker-entrypoint-initdb.d/
+COPY ./init*.sql /docker-entrypoint-initdb.d/
