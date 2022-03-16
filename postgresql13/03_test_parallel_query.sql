@@ -7,6 +7,7 @@ select count(*)
 from public.test_data
 where lfile_seq = 1297;
 
+--병렬쿼리 (pg13 - ctas)
 --Finalize Aggregate  (cost=198662.67..198662.68 rows=1 width=8) (actual time=1195.496..1205.608 rows=1 loops=1)
 --  ->  Gather  (cost=198662.45..198662.66 rows=2 width=8) (actual time=1194.512..1205.590 rows=3 loops=1)
 --        Workers Planned: 2
@@ -30,6 +31,7 @@ select lfile_seq, count(*)
 from public.test_data
 group by lfile_seq ;
 
+--병렬쿼리 (pg13 - ctas)
 --Finalize GroupAggregate  (cost=210868.92..212696.07 rows=7212 width=12) (actual time=2548.111..2580.071 rows=13662 loops=1)
 --  Group Key: lfile_seq
 --  ->  Gather Merge  (cost=210868.92..212551.83 rows=14424 width=12) (actual time=2548.087..2567.366 rows=36655 loops=1)
@@ -61,6 +63,7 @@ into test
 from public.test_data
 group by lfile_seq ;
 
+--병렬쿼리 (pg13 - select into)
 --Finalize GroupAggregate  (cost=210868.92..212696.07 rows=7212 width=12) (actual time=2094.773..2120.719 rows=13662 loops=1)
 --  Group Key: lfile_seq
 --  ->  Gather Merge  (cost=210868.92..212551.83 rows=14424 width=12) (actual time=2094.748..2107.902 rows=37131 loops=1)
@@ -84,6 +87,45 @@ group by lfile_seq ;
 --  Timing: Generation 3.246 ms, Inlining 0.000 ms, Optimization 1.352 ms, Emission 27.172 ms, Total 31.771 ms
 --Execution Time: 2133.338 ms
 
+
+drop table if exists test1;
+drop table if exists test2;
+
+select *
+into test1
+from public.test_data;
+
+explain analyze
+create table test2 as 
+select lfile_seq, count(*)
+from test1
+group by lfile_seq ;
+
+--병렬쿼리 (pg13 - ctas from temp table)
+--Finalize GroupAggregate  (cost=177738.93..177789.60 rows=200 width=12) (actual time=2436.987..2459.062 rows=13662 loops=1)
+--  Group Key: lfile_seq
+--  ->  Gather Merge  (cost=177738.93..177785.60 rows=400 width=12) (actual time=2436.970..2448.691 rows=37008 loops=1)
+--        Workers Planned: 2
+--        Workers Launched: 2
+--        ->  Sort  (cost=176738.91..176739.41 rows=200 width=12) (actual time=2385.611..2387.409 rows=12336 loops=3)
+--              Sort Key: lfile_seq
+--              Sort Method: quicksort  Memory: 973kB
+--              Worker 0:  Sort Method: quicksort  Memory: 958kB
+--              Worker 1:  Sort Method: quicksort  Memory: 957kB
+--              ->  Partial HashAggregate  (cost=176729.26..176731.26 rows=200 width=12) (actual time=2376.086..2380.043 rows=12336 loops=3)
+--                    Group Key: lfile_seq
+--                    Batches: 1  Memory Usage: 1825kB
+--                    Worker 0:  Batches: 1  Memory Usage: 1441kB
+--                    Worker 1:  Batches: 1  Memory Usage: 1441kB
+--                    ->  Parallel Seq Scan on test1  (cost=0.00..164250.84 rows=2495684 width=4) (actual time=0.085..880.272 rows=3735501 loops=3)
+--Planning Time: 0.108 ms
+--JIT:
+--  Functions: 21
+--  Options: Inlining false, Optimization false, Expressions true, Deforming true
+--  Timing: Generation 2.524 ms, Inlining 0.000 ms, Optimization 1.015 ms, Emission 22.857 ms, Total 26.396 ms
+--Execution Time: 2471.345 ms
+
+
 CREATE OR REPLACE FUNCTION public.fn_test()
 	RETURNS int4
 	LANGUAGE plpgsql
@@ -99,8 +141,7 @@ AS $function$
 		from public.test_data
 		where lfile_seq = 1297;
 		
-		create temporary table test2 
-		as 
+		create temporary table test2 as 
 		select lfile_seq, count(*) cnt
 		from public.test_data
 		group by lfile_seq;
@@ -113,6 +154,7 @@ AS $function$
 	END;
 $function$
 
+--병렬쿼리 안됨 (사용자함수)
 -- 3974
 explain analyze
 select public.fn_test();
