@@ -1,4 +1,4 @@
-version: '2'
+version: '3'
 services:
   db:
     image: pg13:latest 
@@ -6,6 +6,7 @@ services:
     ports:
       - '10031:5432' 
     volumes:
+      # - ./data:/var/lib/postgresql/data  # WSL 환경에서 파일시스템 차이로 불가함
       - pg13_data:/var/lib/postgresql/data
     # restart: always
 volumes:
