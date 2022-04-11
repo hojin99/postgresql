@@ -185,6 +185,8 @@ begin
 end;
 $procedure$
 
+--병렬쿼리 됨 (프로시저)
+-- plan은 auto explain으로 확인 가능
 -- 3697
 call public.ps_test2();
 
@@ -218,4 +220,109 @@ $procedure$
 
 -- 2655
 call public.ps_test();
+
+
+---------------------------------------------------------------------------------------
+-- # CTAS stating 처리 방법 별 성능 비교
+-- unlogged(병렬) > logged(병렬) > temporary(단일)
+
+drop table if exists test1;
+drop table if exists test3;
+
+create temporary table test1 as
+select *
+from public.test_data;
+	
+explain analyze	
+		create temporary table test3 as 
+		select lfile_seq, count(*) cnt
+		from test1
+		group by lfile_seq;	
+	
+-- HashAggregate  (cost=229138.63..229140.63 rows=200 width=12) (actual time=5336.762..5339.981 rows=13662 loops=1)
+--   Group Key: lfile_seq
+--   Batches: 1  Memory Usage: 2081kB
+--   ->  Seq Scan on test1  (cost=0.00..199190.42 rows=5989642 width=4) (actual time=0.029..1998.098 rows=11206503 loops=1)
+-- Planning Time: 0.117 ms
+-- JIT:
+--   Functions: 6
+--   Options: Inlining false, Optimization false, Expressions true, Deforming true
+--   Timing: Generation 1.090 ms, Inlining 0.000 ms, Optimization 1.496 ms, Emission 4.542 ms, Total 7.128 ms
+-- Execution Time: 5347.380 ms
+
+
+drop table if exists test1;
+drop table if exists test3;
+
+create table test1 as
+select *
+from public.test_data;
+	
+explain analyze	
+		create temporary table test3 as 
+		select lfile_seq, count(*) cnt
+		from test1
+		group by lfile_seq;	
+
+-- Finalize GroupAggregate  (cost=177738.93..177789.60 rows=200 width=12) (actual time=4043.748..4063.862 rows=13662 loops=1)
+--   Group Key: lfile_seq
+--   ->  Gather Merge  (cost=177738.93..177785.60 rows=400 width=12) (actual time=4043.732..4055.343 rows=33226 loops=1)
+--         Workers Planned: 2
+--         Workers Launched: 2
+--         ->  Sort  (cost=176738.91..176739.41 rows=200 width=12) (actual time=3948.072..3949.774 rows=11075 loops=3)
+--               Sort Key: lfile_seq
+--               Sort Method: quicksort  Memory: 913kB
+--               Worker 0:  Sort Method: quicksort  Memory: 883kB
+--               Worker 1:  Sort Method: quicksort  Memory: 916kB
+--               ->  Partial HashAggregate  (cost=176729.26..176731.26 rows=200 width=12) (actual time=3940.279..3943.450 rows=11075 loops=3)
+--                     Group Key: lfile_seq
+--                     Batches: 1  Memory Usage: 1441kB
+--                     Worker 0:  Batches: 1  Memory Usage: 1441kB
+--                     Worker 1:  Batches: 1  Memory Usage: 1441kB
+--                     ->  Parallel Seq Scan on test1  (cost=0.00..164250.84 rows=2495684 width=4) (actual time=0.047..1531.142 rows=3735501 loops=3)
+-- Planning Time: 0.154 ms
+-- JIT:
+--   Functions: 21
+--   Options: Inlining false, Optimization false, Expressions true, Deforming true
+--   Timing: Generation 13.250 ms, Inlining 0.000 ms, Optimization 1.169 ms, Emission 35.617 ms, Total 50.036 ms
+-- Execution Time: 4117.144 ms
+
+drop table if exists test1;
+drop table if exists test3;
+
+create unlogged table test1 as
+select *
+from public.test_data;
+	
+explain analyze	
+		create temporary table test3 as 
+		select lfile_seq, count(*) cnt
+		from test1
+		group by lfile_seq;	
+
+-- Finalize GroupAggregate  (cost=177738.93..177789.60 rows=200 width=12) (actual time=2549.194..2590.327 rows=13662 loops=1)
+--   Group Key: lfile_seq
+--   ->  Gather Merge  (cost=177738.93..177785.60 rows=400 width=12) (actual time=2549.178..2574.802 rows=36343 loops=1)
+--         Workers Planned: 2
+--         Workers Launched: 2
+--         ->  Sort  (cost=176738.91..176739.41 rows=200 width=12) (actual time=2483.265..2485.960 rows=12114 loops=3)
+--               Sort Key: lfile_seq
+--               Sort Method: quicksort  Memory: 959kB
+--               Worker 0:  Sort Method: quicksort  Memory: 946kB
+--               Worker 1:  Sort Method: quicksort  Memory: 953kB
+--               ->  Partial HashAggregate  (cost=176729.26..176731.26 rows=200 width=12) (actual time=2466.044..2472.832 rows=12114 loops=3)
+--                     Group Key: lfile_seq
+--                     Batches: 1  Memory Usage: 1825kB
+--                     Worker 0:  Batches: 1  Memory Usage: 1441kB
+--                     Worker 1:  Batches: 1  Memory Usage: 1441kB
+--                     ->  Parallel Seq Scan on test1  (cost=0.00..164250.84 rows=2495684 width=4) (actual time=0.034..932.413 rows=3735501 loops=3)
+-- Planning Time: 0.123 ms
+-- JIT:
+--   Functions: 21
+--   Options: Inlining false, Optimization false, Expressions true, Deforming true
+--   Timing: Generation 4.205 ms, Inlining 0.000 ms, Optimization 1.151 ms, Emission 28.188 ms, Total 33.544 ms
+-- Execution Time: 2600.815 ms
+
+
+
 
