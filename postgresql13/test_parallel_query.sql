@@ -225,6 +225,7 @@ call public.ps_test();
 ---------------------------------------------------------------------------------------
 -- # CTAS stating 처리 방법 별 성능 비교
 -- unlogged(병렬) > logged(병렬) > temporary(단일)
+-- temporary 테이블에서 select는 병렬 쿼리가 안 됨
 
 drop table if exists test1;
 drop table if exists test3;
@@ -324,5 +325,107 @@ explain analyze
 -- Execution Time: 2600.815 ms
 
 
+---------------------------------------------------------------------------------------
+-- # cursor, loop 병렬 처리 확인
+-- The query might be suspended during execution. In any situation in which the system thinks that partial or incremental execution might occur, 
+-- no parallel plan is generated. For example, a cursor created using DECLARE CURSOR will never use a parallel plan. Similarly, 
+-- a PL/pgSQL loop of the form FOR x IN query LOOP .. END LOOP will never use a parallel plan, because the parallel query system is unable 
+-- to verify that the code in the loop is safe to execute while parallel query is active.
+-- 해당 문구가 loop 내부 쿼리가 병렬 쿼리가 안되는 게 아니라 declare의 쿼리가 병렬 쿼리가 안되는 것으로 판단됨 (테스트 결과 loop 내 병렬 쿼리 됨)
+-- auto explain으로 확인
 
+-- 테스트 용
+create table list (
+	num int 
+);
+insert into list values(1);
+insert into list values(2);
+insert into list values(3);
+
+
+-- 단순 loop
+do $$
+begin 
+for r in 1..3 loop
+
+	drop table if exists test1;
+	drop table if exists test3;
+	
+	create table test1 as
+	select *
+	from public.test_data;
+		
+	create temporary table test3 as 
+	select lfile_seq, count(*) cnt
+	from test1
+	group by lfile_seq;
+
+
+end loop;
+end;
+$$;	
+	
+-- for in loop
+do $$
+declare rec record;
+begin
+
+	FOR rec IN 
+		select num from list
+	LOOP
+
+		Raise Notice 'rec : %', rec.num;
+
+		drop table if exists test1;
+		drop table if exists test3;
+		
+		create table test1 as
+		select *
+		from public.test_data;
+			
+		create temporary table test3 as 
+		select lfile_seq, count(*) cnt, rec.num
+		from test1
+		group by lfile_seq;	
+	
+	
+	END LOOP;
+
+end;
+$$;	
+
+-- cursor loop
+do $$
+	declare rec record;
+	DECLARE _REF_CURSOR2 refcursor;
+begin
+
+	OPEN _REF_CURSOR2 FOR
+		select num from list;
+
+	FETCH NEXT FROM _REF_CURSOR2 INTO rec;
+        			
+	WHILE FOUND
+	loop
+
+		Raise Notice 'rec : %', rec.num;
+
+		drop table if exists test1;
+		drop table if exists test3;
+		
+		create table test1 as
+		select *
+		from public.test_data;
+			
+		create temporary table test3 as 
+		select lfile_seq, count(*) cnt, rec.num
+		from test1
+		group by lfile_seq;	
+
+		FETCH NEXT FROM _REF_CURSOR2 INTO rec;
+	end loop;
+	close _REF_CURSOR2;
+	
+end;
+$$;	
 
